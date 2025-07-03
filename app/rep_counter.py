@@ -1,0 +1,82 @@
+import numpy as np
+from typing import List, Tuple
+from app.models import RepCountRequest
+
+
+def keep_only_outliers(series: list[float]) -> list[float]:
+    if len(series) < 3:
+        return []
+
+    arr = np.array(series)
+    q1, q3 = np.percentile(arr, [30, 60])
+    iqr = q3 - q1
+    lower_bound = q1 - 1.5 * iqr
+    upper_bound = q3 + 1.5 * iqr
+    output = []
+    for v in series:
+        if v < lower_bound or v > upper_bound:
+            output.append(v)
+        else:
+            output.append(0)
+    return output
+
+
+def find_local_extrema(signal: List[float]) -> Tuple[List[int], List[int]]:
+    positive_maxima = []
+    negative_minima = []
+
+    for i in range(1, len(signal) - 1):
+        if signal[i] > signal[i - 1] and signal[i] > signal[i + 1] and signal[i] > 0:
+            positive_maxima.append(i)
+        elif signal[i] < signal[i - 1] and signal[i] < signal[i + 1] and signal[i] < 0:
+            negative_minima.append(i)
+
+    return positive_maxima, negative_minima
+
+def count_cycles(series: list[float]) -> int:
+    positive_maximas, negative_minimas = find_local_extrema(series)
+    count = 1
+    for m1,m2 in zip(positive_maximas, positive_maximas[1:]):
+        if any(m1 < n < m2 for n in negative_minimas):
+            count += 1
+    return count
+
+
+def vote_out_unused_axis(xyz: list[list[float]]) -> list[list[float]]:
+    """
+    for each series, min max scale the values and calculate the std deviation.
+    return only a list of the 2 series that have the highest std deviation.
+    """
+    scaled = []
+    for series in xyz:
+        if len(series) < 3:
+            continue
+        arr = np.array(series)
+        min_val = np.min(arr)
+        max_val = np.max(arr)
+        if max_val == min_val:
+            scaled_series = np.zeros_like(arr)
+        else:
+            scaled_series = (arr - min_val) / (max_val - min_val)
+        scaled.append(scaled_series)
+
+    std_devs = [np.std(s) for s in scaled]
+    indices = np.argsort(std_devs)[-2:]  # Get indices of the two highest std deviations
+    return [xyz[i] for i in indices]
+
+
+def count_reps(accel_data: RepCountRequest) -> int:
+    """
+    Count the number of repetitions in the accelerometer data.
+    """
+    xyz = [accel_data.data[i].x for i in range(len(accel_data.data))], \
+          [accel_data.data[i].y for i in range(len(accel_data.data))], \
+          [accel_data.data[i].z for i in range(len(accel_data.data))]
+    filtered_xyz = vote_out_unused_axis(xyz)
+    
+    if not filtered_xyz:
+        return 0
+
+    ax1_count = count_cycles(keep_only_outliers(filtered_xyz[0]))
+    ax2_count = count_cycles(keep_only_outliers(filtered_xyz[1]))
+    return min([ax1_count, ax2_count])

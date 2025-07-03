@@ -15,7 +15,7 @@ This is a FastAPI application for counting exercise repetitions from acceleromet
 2.  **Run the Docker container:**
 
     ```bash
-    docker run -p 8000:8000 fitness-server
+    docker run -p 12001:8000 fitness-server
     ```
 
 ### Locally
