@@ -6,9 +6,9 @@ from app.models import RepCountRequest
 def keep_only_outliers(series: list[float]) -> list[float]:
     if len(series) < 3:
         return []
-
     arr = np.array(series)
     q1, q3 = np.percentile(arr, [30, 60])
+    avg = np.mean(arr)
     iqr = q3 - q1
     lower_bound = q1 - 1.5 * iqr
     upper_bound = q3 + 1.5 * iqr
@@ -35,6 +35,7 @@ def find_local_extrema(signal: List[float]) -> Tuple[List[int], List[int]]:
 
 def count_cycles(series: list[float]) -> int:
     positive_maximas, negative_minimas = find_local_extrema(series)
+    print(f"Positive Maximas: {positive_maximas}, Negative Minimas: {negative_minimas}")
     count = 1
     for m1,m2 in zip(positive_maximas, positive_maximas[1:]):
         if any(m1 < n < m2 for n in negative_minimas):
@@ -42,10 +43,10 @@ def count_cycles(series: list[float]) -> int:
     return count
 
 
-def vote_out_unused_axis(xyz: list[list[float]]) -> list[list[float]]:
+def find_useful_axis(xyz: list[list[float]]) -> list[float]:
     """
     for each series, min max scale the values and calculate the std deviation.
-    return only a list of the 2 series that have the highest std deviation.
+    return only a list of the series that have the highest std deviation.
     """
     scaled = []
     for series in xyz:
@@ -61,8 +62,11 @@ def vote_out_unused_axis(xyz: list[list[float]]) -> list[list[float]]:
         scaled.append(scaled_series)
 
     std_devs = [np.std(s) for s in scaled]
-    indices = np.argsort(std_devs)[-2:]  # Get indices of the two highest std deviations
-    return [xyz[i] for i in indices]
+    if not std_devs:
+        return []
+    max_std_dev_index = np.argmax(std_devs)
+    print(f"Max std dev index: {max_std_dev_index}, std dev: {std_devs[max_std_dev_index]}")
+    return xyz[max_std_dev_index]
 
 
 def count_reps(accel_data: RepCountRequest) -> int:
@@ -72,11 +76,14 @@ def count_reps(accel_data: RepCountRequest) -> int:
     xyz = [accel_data.data[i].x for i in range(len(accel_data.data))], \
           [accel_data.data[i].y for i in range(len(accel_data.data))], \
           [accel_data.data[i].z for i in range(len(accel_data.data))]
-    filtered_xyz = vote_out_unused_axis(xyz)
-    
-    if not filtered_xyz:
+    axis_in_use = find_useful_axis(xyz)
+
+    if not axis_in_use:
         return 0
 
-    ax1_count = count_cycles(keep_only_outliers(filtered_xyz[0]))
-    ax2_count = count_cycles(keep_only_outliers(filtered_xyz[1]))
-    return min([ax1_count, ax2_count])
+    # move all points in the series down by the average value of the series
+    avg = np.mean(axis_in_use)
+    axis_in_use = [point - 1.2 * avg for point in axis_in_use]
+
+    count = count_cycles(axis_in_use)
+    return count
