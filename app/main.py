@@ -11,5 +11,6 @@ app = FastAPI()
 @app.post("/count-reps")
 async def count_reps(payload: RepCountRequest = Body(...)):
     logger.info(f"Received request with {len(payload.data)} data points")
+    logger.info(f"payload: {payload}")
     rep_count = count_reps_logic(payload)
     return {"rep_count": rep_count}
