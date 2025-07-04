@@ -1,46 +1,44 @@
 import numpy as np
-from typing import List, Tuple
 from app.models import RepCountRequest
+from typing import Tuple
+from scipy.signal import find_peaks
+
+def count_cycles(data: list[float], height_threshold_ratio=0.8, distance_threshold=250) -> Tuple[int, np.ndarray]:
+    """
+    Counts the number of cycles in a time-series dataset by finding prominent peaks.
+
+    Args:
+        data (list or np.ndarray): A list of floats representing the signal data.
+        height_threshold_ratio (float): The ratio of the maximum peak height to use as a
+                                        threshold. For example, 0.8 means the threshold
+                                        will be 80% of the highest peak in the data.
+        distance_threshold (int): The minimum horizontal distance (in number of data points)
+                                  between consecutive peaks. This should be adjusted based
+                                  on the approximate length of a cycle in your data.
+
+    Returns:
+        int: The number of detected cycles.
+        np.ndarray: The indices of the detected peaks.
+    """
+    if not isinstance(data, np.ndarray):
+        data = np.array(data)
+
+    if data.size == 0:
+        return 0, np.array([]) # Return early for empty data
+
+    # Dynamically calculate the height threshold
+    max_height = np.max(data)
+    dynamic_height_threshold = max_height * height_threshold_ratio
+
+    # find_peaks returns the indices of the peaks in the data array
+    peaks, _ = find_peaks(data, height=dynamic_height_threshold, distance=distance_threshold)
+
+    # The number of peaks corresponds to the number of cycles
+    num_cycles = len(peaks)
+
+    return num_cycles, peaks
 
 
-def keep_only_outliers(series: list[float]) -> list[float]:
-    if len(series) < 3:
-        return []
-    arr = np.array(series)
-    q1, q3 = np.percentile(arr, [30, 60])
-    avg = np.mean(arr)
-    iqr = q3 - q1
-    lower_bound = q1 - 1.5 * iqr
-    upper_bound = q3 + 1.5 * iqr
-    output = []
-    for v in series:
-        if v < lower_bound or v > upper_bound:
-            output.append(v)
-        else:
-            output.append(0)
-    return output
-
-
-def find_local_extrema(signal: List[float]) -> Tuple[List[int], List[int]]:
-    positive_maxima = []
-    negative_minima = []
-
-    for i in range(1, len(signal) - 1):
-        if signal[i] > signal[i - 1] and signal[i] > signal[i + 1] and signal[i] > 0:
-            positive_maxima.append(i)
-        elif signal[i] < signal[i - 1] and signal[i] < signal[i + 1] and signal[i] < 0:
-            negative_minima.append(i)
-
-    return positive_maxima, negative_minima
-
-def count_cycles(series: list[float]) -> int:
-    positive_maximas, negative_minimas = find_local_extrema(series)
-    print(f"Positive Maximas: {positive_maximas}, Negative Minimas: {negative_minimas}")
-    count = 1
-    for m1,m2 in zip(positive_maximas, positive_maximas[1:]):
-        if any(m1 < n < m2 for n in negative_minimas):
-            count += 1
-    return count
 
 
 def find_useful_axis(xyz: list[list[float]]) -> list[float]:
@@ -82,8 +80,5 @@ def count_reps(accel_data: RepCountRequest) -> int:
         return 0
 
     # move all points in the series down by the average value of the series
-    avg = np.mean(axis_in_use)
-    axis_in_use = [point - 1.2 * avg for point in axis_in_use]
-
-    count = count_cycles(axis_in_use)
+    count, peaks = count_cycles(axis_in_use, height_threshold_ratio=0.8, distance_threshold=250)
     return count
